@@ -34,3 +34,7 @@ project "tests"
 kind "ConsoleApp"
 files "tests/**.cpp"
 links { "tldr" }
+configuration "Debug"
+postbuildcommands("build/debug/tests")
+configuration "Release"
+postbuildcommands("build/release/tests")
