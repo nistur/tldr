@@ -55,6 +55,7 @@ inline tldrReturn tldrToken(const char* str, char* tok)
     static const char* s_string = 0;
     static const char* s_pStart = 0;
     if(s_string == 0 && str == 0) return TLDR_NO_CONTEXT;
+    if(str == 0 && tok == 0) { s_string = s_pStart = 0; return TLDR_NO_CONTEXT; }
 
     if(str && str != s_string) s_string = s_pStart = str;
     if(!*s_pStart) return TLDR_NO_CONTEXT;
@@ -63,6 +64,7 @@ inline tldrReturn tldrToken(const char* str, char* tok)
     while(*pEnd != '.' && *pEnd != 0) pEnd++;
     int len = pEnd - s_pStart;
     memcpy(tok, s_pStart, len);
+    tok[len] = 0;
     s_pStart = *pEnd ? pEnd + 1 : pEnd;
 
     return TLDR_SUCCESS;
@@ -227,7 +229,7 @@ struct _header
     char id[4];
     int  pathofs;
     int  valofs;
-    int  num;
+    char npaths;
 };
 const char* ID = "TLDR";
 
@@ -255,6 +257,9 @@ tldrReturn tldrLoadBinary(tldrContext* context, const char* filename, bool clear
 {
     if(!context)
 	return TLDR_NO_CONTEXT;
+
+    if(clear)
+	tldrClearContext(context);
     
     FILE* fp = fopen(filename, "rb");
     if(!fp)
@@ -266,17 +271,20 @@ tldrReturn tldrLoadBinary(tldrContext* context, const char* filename, bool clear
 
     char* buffer = new char[size];
     fread(buffer, 1, size, fp);
+
+    tldrReturn res = tldrParseBinary(context, buffer, size);
     
     delete [] buffer;
 
     fclose(fp);
-    return TLDR_SUCCESS;
+    return res;
 }
 
 struct _val
 {
     int pathofs;
     int valofs;
+    int nextofs;
 };
 
 tldrReturn tldrGenerateBinary(tldrContext* context, char* buffer, long& size)
@@ -304,39 +312,109 @@ tldrReturn tldrGenerateBinary(tldrContext* context, char* buffer, long& size)
     for(int i=0; i<TLDR_MAX_NODES; ++i)
 	if(context->values[i])
 	    values[cnt++] = context->values[i];
-    header->num = cnt;
 
     char paths[TLDR_MAX_NODES][TLDR_STRING_MAX];
 
-
+    char tok[TLDR_STRING_MAX];
     int nPaths = 0;
     for(int i=0; i<cnt; ++i)
     {
-	while(tldrToken(values[i]->path, paths[nPaths]) == TLDR_SUCCESS)
+	while(tldrToken(values[i]->path, tok) == TLDR_SUCCESS)
 	{ 
-	    int len = strlen(paths[nPaths]) + 1;
-	    //if(currentSize + len > size) return TLDR_NO_MEMORY;
-	    memcpy(pBuf, paths[nPaths], len);
+	    bool exists = false;
+	    for(int i=0; i<nPaths; ++i)
+		if(strcmp(tok, paths[i]) == 0)
+		{
+		    exists = true;
+		    break;
+		}
+	    if(exists) continue;
+	    
+	    int len = strlen(tok) + 1;
+	    if(currentSize + len > size) return TLDR_NO_MEMORY;
+	    memcpy(paths[nPaths], tok, len);
+	    memcpy(pBuf, tok, len);
 	    currentSize += len;
 	    pBuf = buffer + currentSize;
 	    nPaths++;
 	}
     }
+    tldrToken(0,0);
 
-    header->valofs = pBuf - buffer;
-/*
+    header->npaths = nPaths;
+    header->valofs = currentSize;
+
     for(int i=0; i<cnt; ++i)
     {
 	_val* val = (_val*)pBuf;
 	val->pathofs = sizeof(_val);
-	val->valofs  = val->pathofs; 
+	char pathIDs[TLDR_MAX_NODES];
+	int ntok = 0;
 	pBuf += val->pathofs;
+	while(tldrToken(values[i]->path, tok) == TLDR_SUCCESS)
+	    for(int i=0; i<nPaths; ++i)
+		if(strcmp(tok, paths[i]) == 0)
+		{
+		    pathIDs[ntok++] = i+1;
+		    break;
+		}
+	pathIDs[ntok++] = 0;
+	tldrToken(0,0);
+	memcpy(pBuf, pathIDs, ntok);
+	val->valofs  = val->pathofs + ntok; 
+	pBuf += ntok;
 	int len = strlen(values[i]->value) + 1;
 	memcpy(pBuf, values[i]->value, len);
 	pBuf += len;
-	currentSize += val->pathofs + len;
+	currentSize = pBuf - buffer;
+	val->nextofs = (i < cnt-1) ? pBuf - (char*)val :0;
     }
-*/
+    
     size = currentSize;
+    return TLDR_SUCCESS;
+}
+ 
+tldrReturn tldrParseBinary(tldrContext* context, const char* buffer, long size)
+{
+    if(!context)
+	return TLDR_NO_CONTEXT;
+
+    _header* header = (_header*)buffer;
+    if(memcmp(header->id, ID, 4) != 0)
+	return TLDR_INVALID_HEADER;
+
+    char paths[TLDR_MAX_NODES][TLDR_STRING_MAX];
+
+    const char* path = buffer + header->pathofs;
+    for(int i=0; i<header->npaths; ++i)
+    {
+	int len = strlen(path);
+	sprintf(paths[i], "%s", path);
+	path += len + 1;
+    }
+
+    _val* val = (_val*)(buffer + header->valofs);
+    while(val)
+    {
+	char key[TLDR_STRING_MAX];
+	*key = 0;
+	char* pathID = (char*)val + val->pathofs;
+	while(*pathID)
+	{
+	    int id = *pathID - 1;
+	    int len = strlen(key);
+	    if(!len)
+		sprintf(key, "%s", paths[id]);
+	    else
+		sprintf(key + len, ".%s", paths[id]);
+	    pathID++;
+	}
+	
+	const char* value = (char*)val + val->valofs;
+	tldrWriteValue(context, key, value);
+
+	val = val->nextofs ? val + val->nextofs : 0;
+    }
+
     return TLDR_SUCCESS;
 }
