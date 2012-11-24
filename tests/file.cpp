@@ -3,7 +3,7 @@
 
 TEST_TLDR(Save, File, 0, "some.key", "something",
 	  {
-	      ASSERT(tldrSaveBinary(m_data.context, "test1.tldr") == TLDR_SUCCESS);
+	      ASSERT(tldrSaveBinary(m_data.context, "data/test1.tldr") == TLDR_SUCCESS);
 	  });
 
 
@@ -21,7 +21,7 @@ TEST(SaveMultiple, File, 0.0f,
      },
      // test
      {
-	 ASSERT(tldrSaveBinary(m_data.context, "test2.tldr") == TLDR_SUCCESS);
+	 ASSERT(tldrSaveBinary(m_data.context, "data/test2.tldr") == TLDR_SUCCESS);
      },
      // data
      {
@@ -39,11 +39,16 @@ TEST_TLDR(SaveFail, File, 0, "", "",
 
 TEST_TLDR(Load, File, 0, "", "",
 	  {
-	      ASSERT(tldrLoadBinary(m_data.context, "test1.tldr", true) == TLDR_SUCCESS);
+	      ASSERT(tldrLoadBinary(m_data.context, "data/test1.tldr", true) == TLDR_SUCCESS);
 	      ASSERT(tldrKeyExists(m_data.context, "some.key") == TLDR_SUCCESS);
+	  });
+
+TEST_TLDR(LoadLarge, File, 0, "", "",
+	  {
+	      ASSERT(tldrLoadBinary(m_data.context, "data/long.tldr", true) == TLDR_SUCCESS);
 	  });
 
 TEST_TLDR(LoadFail, File, 0, "", "",
 	  {
-	      ASSERT(tldrLoadBinary(m_data.context, "testfail.tldr", true) == TLDR_NO_FILE);
+	      ASSERT(tldrLoadBinary(m_data.context, "data/testfail.tldr", true) == TLDR_NO_FILE);
 	  });

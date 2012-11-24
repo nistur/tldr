@@ -149,7 +149,7 @@ _node* tldrGetNode(tldrContext* context, const char* key, bool create)
 		if(!node->children[i])
 		{
 		    next = new _node;
-		    tldrClearNode(next);
+		    tldrInitNode(next, node);
 		    memcpy(next->name, name, len + 1);
 		    memcpy(next->path, path, TLDR_STRING_MAX);
 		    node->children[i] = next;
@@ -231,7 +231,7 @@ struct _header
     int  valofs;
     char npaths;
 };
-const char* ID = "TLDR";
+const char* TLDR_ID = "TLDR";
 
 tldrReturn tldrSaveBinary(tldrContext* context, const char* filename)
 {
@@ -296,7 +296,7 @@ tldrReturn tldrGenerateBinary(tldrContext* context, char* buffer, long& size)
 
     // first off, set the header
     _header* header = (_header*)buffer;
-    mempcpy(header->id, ID, 4);
+    mempcpy(header->id, TLDR_ID, 4);
     header->pathofs = sizeof(_header);
     currentSize += header->pathofs;
 
@@ -380,7 +380,7 @@ tldrReturn tldrParseBinary(tldrContext* context, const char* buffer, long size)
 	return TLDR_NO_CONTEXT;
 
     _header* header = (_header*)buffer;
-    if(memcmp(header->id, ID, 4) != 0)
+    if(memcmp(header->id, TLDR_ID, 4) != 0)
 	return TLDR_INVALID_HEADER;
 
     char paths[TLDR_MAX_NODES][TLDR_STRING_MAX];
@@ -413,7 +413,7 @@ tldrReturn tldrParseBinary(tldrContext* context, const char* buffer, long size)
 	const char* value = (char*)val + val->valofs;
 	tldrWriteValue(context, key, value);
 
-	val = val->nextofs ? val + val->nextofs : 0;
+	val = val->nextofs ? (_val*)((char*)val + val->nextofs) : 0;
     }
 
     return TLDR_SUCCESS;
